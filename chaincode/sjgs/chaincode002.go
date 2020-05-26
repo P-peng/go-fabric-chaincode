@@ -40,6 +40,8 @@ func (s *SmartContract) Invoke(stub shim.ChaincodeStubInterface) pb.Response {
 		return s.del(stub, args)
 	} else if fn == "getHistoryForKey" {
 		return s.getHistoryForKey(stub, args)
+	} else if fn == "getStateByRange" {
+		return s.getStateByRange(stub, args)
 	}
 	return shim.Error("No func")
 }
@@ -84,6 +86,52 @@ func (s *SmartContract) del(stub shim.ChaincodeStubInterface, args []string) pb.
 		return shim.Error("del error")
 	}
 	return shim.Success([]byte(stub.GetTxID()))
+}
+
+/**
+键值范围查询
+*/
+func (s *SmartContract) getStateByRange(stub shim.ChaincodeStubInterface, args []string) pb.Response {
+	if len(args) != 2 {
+		return shim.Error("args error")
+	}
+	startKey := args[0]
+	endKey := args[1]
+	resultsIterator, err := stub.GetStateByRange(startKey, endKey)
+	if err != nil {
+		return shim.Error(err.Error())
+	}
+
+	defer resultsIterator.Close()
+	// buffer 存储数据，组装json
+	var buffer bytes.Buffer
+
+	buffer.WriteString("[")
+
+	isWrite := false
+	for resultsIterator.HasNext() {
+		queryResponse, err := resultsIterator.Next()
+		if err != nil {
+			return shim.Error(err.Error())
+		}
+		// Add a comma before array members, suppress it for the first array member
+		if isWrite == true {
+			buffer.WriteString(",")
+		}
+		buffer.WriteString("{\"Key\":")
+		buffer.WriteString("\"")
+		buffer.WriteString(queryResponse.Key)
+		buffer.WriteString("\"")
+
+		buffer.WriteString(", \"Record\":")
+		// Record is a JSON object, so we write as-is
+		buffer.WriteString(string(queryResponse.Value))
+		buffer.WriteString("}")
+		isWrite = true
+	}
+	buffer.WriteString("]")
+
+	return shim.Success(buffer.Bytes())
 }
 
 /**
